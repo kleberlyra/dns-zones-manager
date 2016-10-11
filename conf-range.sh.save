@@ -1,0 +1,90 @@
+#!/bin/bash
+
+source definicoes.sh
+source funcoes.sh
+
+TotalRange() {
+        SelectMySQL "select count(id) from rangeaddr"
+}
+
+TotalRangeAtivo() {
+        SelectMySQL "select count(id) from rangeaddr where ativo='S' "
+}
+
+ListarRange(){
+        echo -e "Ranges Cadastrados\n"
+        ListMySQL "select r.*,o.nome as 'nome da operadora' from rangeaddr r inner join operadora o on o.id=r.operadora"
+	echo "Total de Ranges Cadastrados: " $(TotalRange)
+	echo -e "Total de Ranges Ativos: $(TotalRangeAtivo)\n"
+}
+
+ListarOperadoraRange(){
+        echo -e "Operadoras Cadastradas\n"
+        ListMySQL "select * from operadora"
+}
+
+ListarIPsRange(){
+	ListMySQL "
+}
+
+InjetarIPsRange(){
+	# $1 NETADDRESS
+	# $2 CIDR
+	# $3 NETADDRESS ID
+	LISTAIP=$(prips ${1}/${2} |  tail -n +2 | head -n -1)
+	for IP in $LISTAIP; do
+		InsertMySQL "insert into iprange (rangeaddr,ip) values (${3},'${IP}');"
+	done
+}
+
+InserirRange(){
+	Cabecalho "Range - inserir"
+	ListarOperadoraRange
+	ListarRange
+        read -p "Id da Operadora: " OPERADORA
+	read -p "Alias (5 posicoes): " ALIAS
+	read -p "Endereco de rede: " NETADDRESS
+	read -p "CIDR (Ex. 24): " CIDR
+        read -e -i "S" -p "Confirma inclusao deste range (S/n) ? " CONFIRMA
+        case ${CONFIRMA} in
+                S|s) IDRANGE=$(InsertRetIDMySQL "insert into rangeaddr (alias,netaddress,operadora,cidr) values (\"${ALIAS}\",\"${NETADDRESS}\", \"${OPERADORA}\",\"${CIDR}\");")
+                        if [ $? ]; then
+				echo -e "Novo range cadastrado com sucesso...\nGerando lista de ips..."
+				InjetarIPsRange ${NETADDRESS} ${CIDR} ${IDRANGE}
+			else
+				Pause "Falha ao inserir o novo range..."
+			fi;;
+                *) Pause "Operacao cancelada..."
+        esac
+}
+
+ExcluirRange(){
+	Cabecalho "Range - Excluir"
+	ListarRange
+        read -p "Informe o Id do range que deseja excluir: " RANGE
+        read -e -i "S" -p "Confirma exclusao do range \"${RANGE}\" (S/n) ? " CONFIRMA
+        case ${CONFIRMA} in
+                S|s) DeleteMySQL "delete from rangeaddr where id=${RANGE}";
+                        [ $? ] && Pause "Range excluido com sucesso..." || Pause "Erro ao excluir o range...";;
+                *) Pause "Operacao cancelada..."
+        esac
+}
+
+MenuRange(){
+        Cabecalho "Range - Principal"
+	echo "Total de Ranges Cadastrados: " $(TotalRange)
+	echo "Total de Ranges Ativos: " $(TotalRangeAtivo)
+        echo -e "\n1 - Listar Ranges\n2 - Inserir Range\n3 - Excluir Range\n4 - Lista IPs\n5 - Ativa/Desativa IP\n0 - Sair\n"
+        read -p "Escolha uma das opcoes: " OPCAO
+
+        case ${OPCAO} in
+                1) clear;Cabecalho "Range - Listagem"; ListarRange;Pause;;
+                2) clear;InserirRange;;
+                3) clear;ExcluirRange;;
+                0) return 0;;
+                *) MenuRange;;
+        esac
+}
+
+MenuRange
+#InjetarIPsRange "200.242.91.128" "26"
